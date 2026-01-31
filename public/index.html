@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkedIn API Caller</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --success: #3fb950;
+      --danger: #f85149;
+      --warning: #d29922;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .overall-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .overall-badge.running { background: rgba(63, 185, 80, 0.2); color: var(--success); }
+    .overall-badge.stopped { background: rgba(139, 148, 158, 0.2); color: var(--muted); }
+    .phase-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .phase-badge.pending { background: rgba(210, 153, 34, 0.2); color: var(--warning); }
+    .phase-badge.sleeping { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card h2 { font-size: 0.9rem; margin: 0 0 12px 0; color: var(--muted); font-weight: 500; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat .value { font-size: 1.5rem; font-weight: 700; }
+    .stat .label { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    .progress-wrap {
+      height: 12px;
+      background: var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      border-radius: 6px;
+      transition: width 0.3s ease;
+    }
+    .progress-text { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { opacity: 0.9; }
+    .btn-start { background: var(--success); color: #fff; }
+    .btn-stop { background: var(--danger); color: #fff; }
+    .ids-list {
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .ids-list .id-row { padding: 2px 0; }
+    .ids-list .id-row.failed { color: var(--danger); }
+    .ids-list .id-row .status { margin-left: 8px; font-size: 0.75rem; opacity: 0.8; }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 400px;
+      width: 90%;
+    }
+    .modal h3 { margin: 0 0 16px 0; font-size: 1.1rem; }
+    .modal .run-stats { margin: 12px 0; }
+    .modal .run-stats p { margin: 8px 0; color: var(--muted); }
+    .modal .run-stats strong { color: var(--text); }
+    .modal-close {
+      margin-top: 16px;
+      padding: 8px 16px;
+      background: var(--border);
+      color: var(--text);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .error-codes {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .error-codes code { background: var(--bg); padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      LinkedIn API Caller
+      <span class="overall-badge stopped" id="overallBadge">Stopped</span>
+      <span class="phase-badge pending" id="phaseBadge">Pending</span>
+    </h1>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="value" id="totalIds">0</div>
+        <div class="label">Total IDs</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="doneCount">0</div>
+        <div class="label">Done</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="failedCount">0</div>
+        <div class="label">Failed</div>
+      </div>
+      <div class="stat">
+        <div class="value" id="remainingTime">—</div>
+        <div class="label">Remaining (est.)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Progress</h2>
+      <div class="progress-wrap">
+        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">0%</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-start" id="btnStart">Start</button>
+      <button class="btn btn-stop" id="btnStop" disabled>Stop</button>
+    </div>
+
+    <div class="card">
+      <h2>Remaining IDs</h2>
+      <div class="ids-list" id="remainingList">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Failed IDs (with error)</h2>
+      <div class="ids-list" id="failedList">—</div>
+      <div class="error-codes">
+        API codes: <code>200</code> OK, <code>410</code> timeout, <code>404</code> wrong URL,
+        <code>202</code> in progress, <code>403</code> limit, <code>429</code> concurrent,
+        <code>401</code> bad key, <code>400</code> failed.
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="stopModal">
+    <div class="modal">
+      <h3>Run stopped</h3>
+      <div class="run-stats" id="runStats">
+        <p>Done this run: <strong id="runDone">0</strong></p>
+        <p>Failed this run: <strong id="runFailed">0</strong></p>
+      </div>
+      <button class="modal-close" id="modalClose">Close</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    const overallBadge = document.getElementById('overallBadge');
+    const phaseBadge = document.getElementById('phaseBadge');
+    const totalIdsEl = document.getElementById('totalIds');
+    const doneCountEl = document.getElementById('doneCount');
+    const failedCountEl = document.getElementById('failedCount');
+    const remainingTimeEl = document.getElementById('remainingTime');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const remainingList = document.getElementById('remainingList');
+    const failedList = document.getElementById('failedList');
+    const stopModal = document.getElementById('stopModal');
+    const runStats = document.getElementById('runStats');
+    const runDoneEl = document.getElementById('runDone');
+    const runFailedEl = document.getElementById('runFailed');
+    const modalClose = document.getElementById('modalClose');
+
+    function formatTime(sec) {
+      if (sec == null || sec <= 0) return '—';
+      if (sec < 60) return sec + 's';
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return m + 'm ' + s + 's';
+    }
+
+    function renderState(s) {
+      overallBadge.textContent = s.overall === 'running' ? 'Running' : 'Stopped';
+      overallBadge.className = 'overall-badge ' + (s.overall || 'stopped');
+      phaseBadge.textContent = s.phase === 'sleeping' ? 'Sleeping' : 'Pending';
+      phaseBadge.className = 'phase-badge ' + (s.phase || 'pending');
+
+      totalIdsEl.textContent = s.totalIds ?? 0;
+      doneCountEl.textContent = s.doneCount ?? 0;
+      failedCountEl.textContent = s.failedCount ?? 0;
+      remainingTimeEl.textContent = formatTime(s.remainingTimeSec);
+
+      const pct = s.progressPct ?? 0;
+      progressBar.style.width = pct + '%';
+      progressText.textContent = pct + '%';
+
+      btnStart.disabled = s.overall === 'running';
+      btnStop.disabled = s.overall !== 'running';
+
+      if (Array.isArray(s.remainingIds)) {
+        remainingList.innerHTML = s.remainingIds.length
+          ? s.remainingIds.map(id => '<div class="id-row">' + escapeHtml(id) + '</div>').join('')
+          : '<span class="muted">None</span>';
+      }
+
+      if (Array.isArray(s.failedIdsList)) {
+        failedList.innerHTML = s.failedIdsList.length
+          ? s.failedIdsList.map(f =>
+              '<div class="id-row failed">' + escapeHtml(f.id) +
+              '<span class="status">' + (f.status ? f.status + ': ' : '') + escapeHtml(f.message || '') + '</span></div>'
+            ).join('')
+          : '<span class="muted">None</span>';
+      }
+
+      if (s.runStats) {
+        runDoneEl.textContent = s.runStats.done ?? 0;
+        runFailedEl.textContent = s.runStats.failed ?? 0;
+        stopModal.classList.add('open');
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    socket.on('state', renderState);
+
+    // Initial load
+    fetch('/api/state')
+      .then(r => r.json())
+      .then(renderState)
+      .catch(() => {});
+
+    btnStart.addEventListener('click', () => {
+      fetch('/api/start', { method: 'POST' }).then(() => {}).catch(() => {});
+    });
+
+    btnStop.addEventListener('click', () => {
+      fetch('/api/stop', { method: 'POST' }).then(() => {}).catch(() => {});
+      // Modal will open when server sends state with runStats
+    });
+
+    modalClose.addEventListener('click', () => {
+      stopModal.classList.remove('open');
+    });
+    stopModal.addEventListener('click', (e) => {
+      if (e.target === stopModal) stopModal.classList.remove('open');
+    });
+  </script>
+</body>
+</html>
