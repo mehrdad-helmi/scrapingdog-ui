@@ -3,6 +3,8 @@ node_modules/
 # Generated output
 result-json/
 done-ids.txt
+failed-ids.txt
+failed-details.json
 batch1-failed-ids.txt
 remaining-ids.txt
 

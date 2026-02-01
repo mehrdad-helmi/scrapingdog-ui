@@ -9,16 +9,20 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+const NODE_ENV = process.env.NODE_ENV || 'development';
 const PORT = process.env.PORT || 3847;
+
 const CONCURRENCY = 4;
 const TODO_FILE = path.join(__dirname, 'todo-list-ids.txt');
 const DONE_FILE = path.join(__dirname, 'done-ids.txt');
 const FAILED_FILE = path.join(__dirname, 'failed-ids.txt');
+const FAILED_DETAILS_FILE = path.join(__dirname, 'failed-details.json');
 const REMAINING_FILE = path.join(__dirname, 'remaining-ids.txt');
 const RESULT_DIR = path.join(__dirname, 'result-json');
 
-// const API_URL = 'https://api.scrapingdog.com/profile';
-const API_URL = 'http://localhost:3000/api/test';
+const API_URL = NODE_ENV === 'development' 
+  ? 'http://localhost:3000/api/test'
+  : 'https://api.scrapingdog.com/profile';
 const STATUS_MESSAGES = {
   200: 'Successful Request',
   410: 'Request timeout',
@@ -38,8 +42,7 @@ let state = {
   failedCount: 0,
   remainingIds: [],
   doneIds: [],
-  failedIds: [],
-  failedDetails: {}, // { status, message } 
+  failedIdsList: [], // Array of { id, status, message }
   remainingTimeSec: 0,
   progressPct: 0,
   shouldStop: false,
@@ -66,10 +69,35 @@ async function readFailedIds() {
   }
 }
 
+async function readFailedDetails() {
+  try {
+    const content = await fs.readFile(FAILED_DETAILS_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch (e) {
+    if (e.code === 'ENOENT') return {};
+    throw e;
+  }
+}
+
+async function writeFailedDetails(details) {
+  try {
+    await fs.writeFile(FAILED_DETAILS_FILE, JSON.stringify(details, null, 2));
+  } catch (e) {
+    console.error('Failed to write failed-details.json:', e.message);
+  }
+}
+
+async function addFailedDetail(id, status, message) {
+  const details = await readFailedDetails();
+  details[id] = { status, message };
+  await writeFailedDetails(details);
+}
+
 async function getStateFromFiles() {
   const todoIds = await readTodoIds();
   const doneIds = await readDoneIds();
   const failedIds = await readFailedIds();
+  const failedDetails = await readFailedDetails();
   const remainingIds =
     state.overall === 'running'
       ? state.remainingIds
@@ -84,8 +112,8 @@ async function getStateFromFiles() {
       : 100;
   const failedIdsList = failedIds.map((id) => ({
     id,
-    status: state.failedDetails[id]?.status,
-    message: state.failedDetails[id]?.message,
+    status: failedDetails[id]?.status ?? null,
+    message: failedDetails[id]?.message ?? 'Unknown error',
   }));
   return {
     totalIds,
@@ -94,7 +122,6 @@ async function getStateFromFiles() {
     remainingCount,
     remainingIds,
     doneIds,
-    failedIds,
     failedIdsList,
     progressPct,
   };
@@ -216,13 +243,16 @@ async function processOneId(id) {
     }
 
     await appendLine(FAILED_FILE, id);
+    await addFailedDetail(id, status, message);
     return { success: false, id, status, message };
   } catch (err) {
     const message = err.response
       ? STATUS_MESSAGES[err.response.status] || `HTTP ${err.response.status}`
       : err.message || 'Network/Unknown error';
+    const status = err.response?.status ?? 0;
     await appendLine(FAILED_FILE, id);
-    return { success: false, id, status: err.response?.status ?? 0, message };
+    await addFailedDetail(id, status, message);
+    return { success: false, id, status, message };
   }
 }
 
@@ -235,7 +265,7 @@ async function runProcessor() {
     state.phase = 'pending';
     state.doneCount = 0;
     state.failedCount = 0;
-    state.failedDetails = {};
+    state.failedIdsList = [];
     state.runStats = null;
     state.shouldStop = false;
     await emitState();
@@ -276,7 +306,6 @@ async function runProcessor() {
           } else {
             state.failedCount++;
             runFailed++;
-            state.failedDetails[r.id] = { status: r.status, message: r.message };
           }
           await emitState();
           return r;
@@ -354,6 +383,7 @@ io.on('connection', () => {
 
 server.listen(PORT, () => {
   console.log(`Dashboard: http://localhost:${PORT}`);
+  console.log(`API URL: ${API_URL}`);
   runProcessor().catch((err) => {
     console.error('Processor error:', err);
     state.overall = 'stopped';
