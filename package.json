@@ -4,8 +4,8 @@
   "description": "API caller CLI with web UI for LinkedIn profile scraping",
   "main": "server.js",
   "scripts": {
-    "start": "bun server.js",
-    "start:dev": "cross-env NODE_ENV=development bun server.js"
+    "start": "cross-env NODE_ENV=prod bun server.js",
+    "start:dev": "bun server.js"
   },
   "dependencies": {
     "axios": "^1.6.0",

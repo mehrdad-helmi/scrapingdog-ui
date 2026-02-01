@@ -1,21 +1,27 @@
 # LinkedIn API Caller
 
-CLI app with web UI that calls the ScrapingDog profile API for each LinkedIn profile ID from a todo list, with a 4-concurrent limit and 2–4s random delay between batches.
+CLI app with web UI that calls the ScrapingDog profile API
 
 ## Setup
 
 ```bash
-npm install
+bun install
 ```
 
 ## Input
 
-- Put LinkedIn profile IDs (one per line) in **`todo-list-ids.txt`** (or `todo_list_ids.txt`).
+- Put LinkedIn profile IDs (one per line) in **`todo-list-ids.txt`**
+
+## Run **development**
+
+```bash
+ bun start:dev
+```
 
 ## Run
 
 ```bash
-npm start
+bun start
 ```
 
 Then open **http://localhost:3847** and click **Start** to begin. Use **Stop** to pause; remaining IDs are written to `remaining-ids.txt`. Click **Start** again to resume from `remaining-ids.txt` if it exists.
@@ -23,9 +29,11 @@ Then open **http://localhost:3847** and click **Start** to begin. Use **Stop** t
 ## Output
 
 - **`result-json/<id>.json`** – one JSON file per successful profile
-- **`done-ids.txt`** – IDs that succeeded
-- **`failed-ids.txt`** – IDs that failed (with API errors)
-- **`remaining-ids.txt`** – created when the run is stopped before finishing
+- **`todo-list-ids.txt`** – Input file with LinkedIn profile IDs (one per line)
+- **`done-ids.txt`** – IDs that succeeded **DO NOT EDIT MANUALLY!**
+- **`failed-ids.txt`** – IDs that failed (with API errors) **DO NOT EDIT MANUALLY!**
+- **`failed-details.json`** – Failed ids and their error details **DO NOT EDIT MANUALLY!**
+- **`remaining-ids.txt`** – Working source for scrapping **DO NOT EDIT MANUALLY!**
 
 ## API status codes
 
