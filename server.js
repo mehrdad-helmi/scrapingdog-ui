@@ -10,9 +10,8 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3847;
-const CONCURRENCY = 4;
+const CONCURRENCY = 2;
 const TODO_FILE = path.join(__dirname, 'todo-list-ids.txt');
-const TODO_FILE_ALT = path.join(__dirname, 'todo_list_ids.txt');
 const DONE_FILE = path.join(__dirname, 'done-ids.txt');
 const FAILED_FILE = path.join(__dirname, 'failed-ids.txt');
 const REMAINING_FILE = path.join(__dirname, 'remaining-ids.txt');
@@ -37,17 +36,72 @@ let state = {
   doneCount: 0,
   failedCount: 0,
   remainingIds: [],
-  failedIdsList: [],
+  doneIds: [],
+  failedIds: [],
+  failedDetails: {}, // { status, message } 
   remainingTimeSec: 0,
   progressPct: 0,
   shouldStop: false,
-  shouldPause: false,
-  runStats: null, // { done, failed, startedAt } when stopped
-  lastBatchTimingMs: 0,
+  runStats: null, // { done, failed, startedAt }
 };
 
-function emitState() {
-  io.emit('state', { ...state });
+async function readDoneIds() {
+  try {
+    const content = await fs.readFile(DONE_FILE, 'utf-8');
+    return parseIds(content);
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+}
+
+async function readFailedIds() {
+  try {
+    const content = await fs.readFile(FAILED_FILE, 'utf-8');
+    return parseIds(content);
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
+  }
+}
+
+async function getStateFromFiles() {
+  const todoIds = await readTodoIds();
+  const doneIds = await readDoneIds();
+  const failedIds = await readFailedIds();
+  const remainingIds =
+    state.overall === 'running'
+      ? state.remainingIds
+      : await readRemainingIds();
+  const totalIds = todoIds.length;
+  const doneCount = doneIds.length;
+  const failedCount = failedIds.length;
+  const remainingCount = remainingIds.length;
+  const progressPct =
+    totalIds > 0
+      ? Math.round(((doneCount + failedCount) / totalIds) * 100)
+      : 100;
+  const failedIdsList = failedIds.map((id) => ({
+    id,
+    status: state.failedDetails[id]?.status,
+    message: state.failedDetails[id]?.message,
+  }));
+  return {
+    totalIds,
+    doneCount,
+    failedCount,
+    remainingCount,
+    remainingIds,
+    doneIds,
+    failedIds,
+    failedIdsList,
+    progressPct,
+  };
+}
+
+async function emitState() {
+  const fileState = await getStateFromFiles();
+  io.emit('state', { ...state, ...fileState });
 }
 
 async function ensureResultDir() {
@@ -66,7 +120,7 @@ function parseIds(content) {
 }
 
 async function readTodoIds() {
-  for (const file of [TODO_FILE, TODO_FILE_ALT]) {
+  for (const file of [TODO_FILE]) {
     try {
       const content = await fs.readFile(file, 'utf-8');
       return parseIds(content);
@@ -160,10 +214,10 @@ async function runProcessor() {
     state.phase = 'pending';
     state.doneCount = 0;
     state.failedCount = 0;
-    state.failedIdsList = [];
+    state.failedDetails = {};
     state.runStats = null;
     state.shouldStop = false;
-    emitState();
+    await emitState();
 
     // Pre-load for display: use remaining if exists, else todo
     let displayIds = await readRemainingIds();
@@ -172,7 +226,7 @@ async function runProcessor() {
     state.remainingIds = [...displayIds];
     state.progressPct = displayIds.length ? 0 : 100;
     state.remainingTimeSec = 0;
-    emitState();
+    await emitState();
 
     await ensureResultDir();
 
@@ -188,7 +242,7 @@ async function runProcessor() {
     state.totalIds = ids.length;
     state.remainingIds = [...ids];
     state.progressPct = ids.length ? 0 : 100;
-    emitState();
+    await emitState();
     if (ids.length === 0) continue;
 
     const runStartedAt = Date.now();
@@ -199,23 +253,26 @@ async function runProcessor() {
     while (ids.length > 0 && !state.shouldStop) {
       const batch = ids.splice(0, CONCURRENCY);
       state.phase = 'pending';
-      emitState();
+      await emitState();
 
       const batchStart = Date.now();
-      const results = await Promise.all(batch.map((id) => processOneId(id)));
+      const promises = batch.map((id) =>
+        processOneId(id).then(async (r) => {
+          if (r.success) {
+            state.doneCount++;
+            runDone++;
+          } else {
+            state.failedCount++;
+            runFailed++;
+            state.failedDetails[r.id] = { status: r.status, message: r.message };
+          }
+          await emitState();
+          return r;
+        })
+      );
+      await Promise.all(promises);
       const batchElapsed = Date.now() - batchStart;
       batchTimes.push(batchElapsed);
-
-      for (const r of results) {
-        if (r.success) {
-          state.doneCount++;
-          runDone++;
-        } else {
-          state.failedCount++;
-          runFailed++;
-          state.failedIdsList.push({ id: r.id, status: r.status, message: r.message });
-        }
-      }
 
       state.remainingIds = [...ids];
       state.progressPct =
@@ -232,11 +289,11 @@ async function runProcessor() {
       state.remainingTimeSec = Math.round(
         (batchesLeft * (avgBatchMs + (2000 + 4000) / 2)) / 1000
       );
-      emitState();
+      await emitState();
 
       if (ids.length > 0 && !state.shouldStop) {
         state.phase = 'sleeping';
-        emitState();
+        await emitState();
         await sleep(delayMs);
       }
     }
@@ -254,14 +311,15 @@ async function runProcessor() {
     };
     state.remainingIds = [...ids];
     state.remainingTimeSec = 0;
-    emitState();
+    await emitState();
   }
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/state', (req, res) => {
-  res.json(state);
+app.get('/api/state', async (req, res) => {
+  const fileState = await getStateFromFiles();
+  res.json({ ...state, ...fileState });
 });
 
 app.post('/api/start', (req, res) => {
@@ -270,8 +328,7 @@ app.post('/api/start', (req, res) => {
   }
   state.shouldStop = false;
   state.overall = 'running';
-  emitState();
-  res.json({ ok: true });
+  emitState().then(() => res.json({ ok: true })).catch(() => res.json({ ok: true }));
 });
 
 app.post('/api/stop', (req, res) => {
@@ -279,8 +336,8 @@ app.post('/api/stop', (req, res) => {
   res.json({ ok: true });
 });
 
-io.on('connection', (socket) => {
-  emitState();
+io.on('connection', () => {
+  emitState().catch(() => {});
 });
 
 server.listen(PORT, () => {
@@ -289,6 +346,6 @@ server.listen(PORT, () => {
     console.error('Processor error:', err);
     state.overall = 'stopped';
     state.phase = 'pending';
-    emitState();
+    emitState().catch(() => {});
   });
 });

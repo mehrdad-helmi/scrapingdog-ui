@@ -186,6 +186,10 @@
         <div class="label">Failed</div>
       </div>
       <div class="stat">
+        <div class="value" id="remainingCount">0</div>
+        <div class="label">Remaining</div>
+      </div>
+      <div class="stat">
         <div class="value" id="remainingTime">—</div>
         <div class="label">Remaining (est.)</div>
       </div>
@@ -202,6 +206,11 @@
     <div class="actions">
       <button class="btn btn-start" id="btnStart">Start</button>
       <button class="btn btn-stop" id="btnStop" disabled>Stop</button>
+    </div>
+
+    <div class="card">
+      <h2>Done IDs</h2>
+      <div class="ids-list" id="doneList">—</div>
     </div>
 
     <div class="card">
@@ -238,11 +247,13 @@
     const totalIdsEl = document.getElementById('totalIds');
     const doneCountEl = document.getElementById('doneCount');
     const failedCountEl = document.getElementById('failedCount');
+    const remainingCountEl = document.getElementById('remainingCount');
     const remainingTimeEl = document.getElementById('remainingTime');
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
     const btnStart = document.getElementById('btnStart');
     const btnStop = document.getElementById('btnStop');
+    const doneList = document.getElementById('doneList');
     const remainingList = document.getElementById('remainingList');
     const failedList = document.getElementById('failedList');
     const stopModal = document.getElementById('stopModal');
@@ -268,6 +279,7 @@
       totalIdsEl.textContent = s.totalIds ?? 0;
       doneCountEl.textContent = s.doneCount ?? 0;
       failedCountEl.textContent = s.failedCount ?? 0;
+      remainingCountEl.textContent = s.remainingCount ?? (Array.isArray(s.remainingIds) ? s.remainingIds.length : 0);
       remainingTimeEl.textContent = formatTime(s.remainingTimeSec);
 
       const pct = s.progressPct ?? 0;
@@ -276,6 +288,12 @@
 
       btnStart.disabled = s.overall === 'running';
       btnStop.disabled = s.overall !== 'running';
+
+      if (Array.isArray(s.doneIds)) {
+        doneList.innerHTML = s.doneIds.length
+          ? s.doneIds.map(id => '<div class="id-row">' + escapeHtml(id) + '</div>').join('')
+          : '<span class="muted">None</span>';
+      }
 
       if (Array.isArray(s.remainingIds)) {
         remainingList.innerHTML = s.remainingIds.length
@@ -287,7 +305,7 @@
         failedList.innerHTML = s.failedIdsList.length
           ? s.failedIdsList.map(f =>
               '<div class="id-row failed">' + escapeHtml(f.id) +
-              '<span class="status">' + (f.status ? f.status + ': ' : '') + escapeHtml(f.message || '') + '</span></div>'
+              (f.status != null || f.message ? '<span class="status">' + (f.status ? f.status + ': ' : '') + escapeHtml(f.message || '') + '</span>' : '') + '</div>'
             ).join('')
           : '<span class="muted">None</span>';
       }

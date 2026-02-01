@@ -3,7 +3,7 @@ node_modules/
 # Generated output
 result-json/
 done-ids.txt
-failed-ids.txt
+batch1-failed-ids.txt
 remaining-ids.txt
 
 # Env / secrets (if you move API key later)
