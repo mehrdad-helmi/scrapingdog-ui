@@ -10,14 +10,15 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3847;
-const CONCURRENCY = 2;
+const CONCURRENCY = 4;
 const TODO_FILE = path.join(__dirname, 'todo-list-ids.txt');
 const DONE_FILE = path.join(__dirname, 'done-ids.txt');
 const FAILED_FILE = path.join(__dirname, 'failed-ids.txt');
 const REMAINING_FILE = path.join(__dirname, 'remaining-ids.txt');
 const RESULT_DIR = path.join(__dirname, 'result-json');
 
-const API_URL = 'https://api.scrapingdog.com/profile';
+// const API_URL = 'https://api.scrapingdog.com/profile';
+const API_URL = 'http://localhost:3000/api/test';
 const STATUS_MESSAGES = {
   200: 'Successful Request',
   410: 'Request timeout',
@@ -120,16 +121,13 @@ function parseIds(content) {
 }
 
 async function readTodoIds() {
-  for (const file of [TODO_FILE]) {
-    try {
-      const content = await fs.readFile(file, 'utf-8');
-      return parseIds(content);
-    } catch (e) {
-      if (e.code === 'ENOENT') continue;
-      throw e;
-    }
+  try {
+    const content = await fs.readFile(TODO_FILE, 'utf-8');
+    return parseIds(content);
+  } catch (e) {
+    if (e.code === 'ENOENT') return [];
+    throw e;
   }
-  return [];
 }
 
 async function readRemainingIds() {
@@ -155,6 +153,26 @@ async function writeRemaining(ids) {
     await fs.writeFile(REMAINING_FILE, ids.join('\n') + (ids.length ? '\n' : ''));
   } catch (e) {
     console.error('Write remaining failed:', e.message);
+  }
+}
+
+async function regenerateRemainingIds() {
+  try {
+    const todoIds = await readTodoIds();
+    const doneIds = await readDoneIds();
+    const failedIds = await readFailedIds();
+    
+    const doneSet = new Set(doneIds);
+    const failedSet = new Set(failedIds);
+    
+    const remaining = todoIds.filter(id => !doneSet.has(id) && !failedSet.has(id));
+    
+    await writeRemaining(remaining);
+    console.log(`Regenerated remaining-ids.txt: ${remaining.length} IDs remaining`);
+    return remaining;
+  } catch (e) {
+    console.error('Failed to regenerate remaining-ids.txt:', e.message);
+    return [];
   }
 }
 
@@ -209,6 +227,9 @@ async function processOneId(id) {
 }
 
 async function runProcessor() {
+  // Regenerate remaining-ids.txt on server startup
+  await regenerateRemainingIds();
+  
   while (true) {
     state.overall = 'stopped';
     state.phase = 'pending';
@@ -219,15 +240,6 @@ async function runProcessor() {
     state.shouldStop = false;
     await emitState();
 
-    // Pre-load for display: use remaining if exists, else todo
-    let displayIds = await readRemainingIds();
-    if (displayIds.length === 0) displayIds = await readTodoIds();
-    state.totalIds = displayIds.length;
-    state.remainingIds = [...displayIds];
-    state.progressPct = displayIds.length ? 0 : 100;
-    state.remainingTimeSec = 0;
-    await emitState();
-
     await ensureResultDir();
 
     // Wait for Start button
@@ -236,14 +248,14 @@ async function runProcessor() {
     }
     if (state.shouldStop) continue;
 
-    // On Start: use remaining-ids.txt to resume, else todo-list-ids.txt
-    let ids = await readRemainingIds();
-    if (ids.length === 0) ids = await readTodoIds();
-    state.totalIds = ids.length;
+    // On Start: regenerate remaining-ids.txt to ensure sync
+    const ids = await regenerateRemainingIds();
     state.remainingIds = [...ids];
-    state.progressPct = ids.length ? 0 : 100;
     await emitState();
-    if (ids.length === 0) continue;
+    if (ids.length === 0) {
+      console.log('No remaining IDs to process');
+      continue;
+    }
 
     const runStartedAt = Date.now();
     let runDone = 0;
