@@ -7,6 +7,8 @@ failed-ids.txt
 failed-details.json
 batch1-failed-ids.txt
 remaining-ids.txt
+input-ids-*
+output
 
 # Env / secrets (if you move API key later)
 .env

@@ -1,18 +1,15 @@
 {
   "name": "linkedin-api-caller",
   "version": "1.0.0",
-  "description": "API caller CLI with web UI for LinkedIn profile scraping",
   "main": "server.js",
-  "scripts": {
-    "start": "cross-env NODE_ENV=prod bun server.js",
-    "start:dev": "bun server.js"
-  },
   "dependencies": {
     "axios": "^1.6.0",
     "express": "^4.18.2",
     "socket.io": "^4.7.2"
   },
-  "devDependencies": {
-    "cross-env": "^10.1.0"
+  "description": "API caller CLI with web UI for LinkedIn profile scraping",
+  "scripts": {
+    "start": "bun server.js",
+    "start:dev": "NODE_ENV=development bun --watch server.js"
   }
 }

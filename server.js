@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const assert = require('node:assert');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,22 +13,47 @@ const io = new Server(server);
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const PORT = process.env.PORT || 3847;
 
-const CONCURRENCY = 4;
-const TODO_FILE = path.join(__dirname, 'todo-list-ids.txt');
-const DONE_FILE = path.join(__dirname, 'done-ids.txt');
-const FAILED_FILE = path.join(__dirname, 'failed-ids.txt');
-const FAILED_DETAILS_FILE = path.join(__dirname, 'failed-details.json');
-const REMAINING_FILE = path.join(__dirname, 'remaining-ids.txt');
-const RESULT_DIR = path.join(__dirname, 'result-json');
+const API_KEY = process.env.API_KEY;
+if(NODE_ENV !== 'development')
+  assert(API_KEY?.length===24,'API KEY NEEDED!');
+
+
+const FILE_APPENDIX = process.env.FILE_APPENDIX ? `-${process.env.FILE_APPENDIX}` : '';
+const SUBDIRECTORY = process.env.SUBDIRECTORY ? `output/${process.env.SUBDIRECTORY}` : 'output';
+if(SUBDIRECTORY)
+  await fs.mkdir(SUBDIRECTORY, {recursive:true}).catch(e=>console.error(e));
+
+const CONCURRENCY = process.env.CONCURRENCY || 3;
+const INPUT_FILE = path.join(__dirname, `input-ids${FILE_APPENDIX}.txt`);
+const DONE_FILE = path.join(__dirname,SUBDIRECTORY, `done-ids${FILE_APPENDIX}.txt`);
+const FAILED_FILE = path.join(__dirname,SUBDIRECTORY, `failed-ids${FILE_APPENDIX}.txt`);
+const FAILED_DETAILS_FILE = path.join(__dirname,SUBDIRECTORY, `failed-details${FILE_APPENDIX}.json`);
+const REMAINING_FILE = path.join(__dirname,SUBDIRECTORY, `remaining-ids${FILE_APPENDIX}.txt`);
+const RESULT_DIR = path.join(__dirname,SUBDIRECTORY, `result-json${FILE_APPENDIX}`);
+
+console.table({
+                'FILE_APPENDIX':FILE_APPENDIX,
+                'SUBDIRECTORY':SUBDIRECTORY,
+                'CONCURRENCY':CONCURRENCY,
+                'INPUT_FILE':INPUT_FILE,
+                'DONE_FILE':DONE_FILE,
+                'FAILED_FILE':FAILED_FILE,
+                'FAILED_DETAILS_FILE':FAILED_DETAILS_FILE,
+                'REMAINING_FILE':REMAINING_FILE,
+                'RESULT_DIR':RESULT_DIR,
+                'PORT':PORT,
+                'API_KEY':API_KEY,
+              })
 
 const API_URL = NODE_ENV === 'development' 
   ? 'http://localhost:3000/api/test'
   : 'https://api.scrapingdog.com/profile';
+
 const STATUS_MESSAGES = {
   200: 'Successful Request',
   410: 'Request timeout',
   404: 'URL is wrong',
-  202: 'Your request is accepted and the scraping is still going on.',
+  202: 'Your request is accepted, and the scraping is still going on.',
   403: 'Request Limit Reached.',
   429: 'Concurrent connection limit reached.',
   401: 'API Key is wrong.',
@@ -94,7 +120,7 @@ async function addFailedDetail(id, status, message) {
 }
 
 async function getStateFromFiles() {
-  const todoIds = await readTodoIds();
+  const inputIds = await readInputIds();
   const doneIds = await readDoneIds();
   const failedIds = await readFailedIds();
   const failedDetails = await readFailedDetails();
@@ -102,7 +128,7 @@ async function getStateFromFiles() {
     state.overall === 'running'
       ? state.remainingIds
       : await readRemainingIds();
-  const totalIds = todoIds.length;
+  const totalIds = inputIds.length;
   const doneCount = doneIds.length;
   const failedCount = failedIds.length;
   const remainingCount = remainingIds.length;
@@ -147,9 +173,9 @@ function parseIds(content) {
     .filter(Boolean);
 }
 
-async function readTodoIds() {
+async function readInputIds() {
   try {
-    const content = await fs.readFile(TODO_FILE, 'utf-8');
+    const content = await fs.readFile(INPUT_FILE, 'utf-8');
     return parseIds(content);
   } catch (e) {
     if (e.code === 'ENOENT') return [];
@@ -185,14 +211,14 @@ async function writeRemaining(ids) {
 
 async function regenerateRemainingIds() {
   try {
-    const todoIds = await readTodoIds();
+    const inputIds = await readInputIds();
     const doneIds = await readDoneIds();
     const failedIds = await readFailedIds();
     
     const doneSet = new Set(doneIds);
     const failedSet = new Set(failedIds);
     
-    const remaining = todoIds.filter(id => !doneSet.has(id) && !failedSet.has(id));
+    const remaining = inputIds.filter(id => !doneSet.has(id) && !failedSet.has(id));
     
     await writeRemaining(remaining);
     console.log(`Regenerated remaining-ids.txt: ${remaining.length} IDs remaining`);
@@ -213,12 +239,12 @@ function randomDelay(minMs, maxMs) {
 
 async function callProfileApi(id) {
   const params = {
-    api_key: '697d20a6c1c25317df41062b',
+    api_key: API_KEY,
     id,
     type: 'profile',
     premium: 'true',
     webhook: 'false',
-    fresh: 'false',
+    fresh: 'true',
   };
   const res = await axios.get(API_URL, {
     params,

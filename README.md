@@ -10,7 +10,7 @@ bun install
 
 ## Input
 
-- Put LinkedIn profile IDs (one per line) in **`todo-list-ids.txt`**
+- Put LinkedIn profile IDs (one per line) in **`input-ids.txt`**
 
 ## Run **development**
 
@@ -29,7 +29,7 @@ Then open **http://localhost:3847** and click **Start** to begin. Use **Stop** t
 ## Output
 
 - **`result-json/<id>.json`** – one JSON file per successful profile
-- **`todo-list-ids.txt`** – Input file with LinkedIn profile IDs (one per line)
+- **`input-ids.txt`** – Input file with LinkedIn profile IDs (one per line)
 - **`done-ids.txt`** – IDs that succeeded **DO NOT EDIT MANUALLY!**
 - **`failed-ids.txt`** – IDs that failed (with API errors) **DO NOT EDIT MANUALLY!**
 - **`failed-details.json`** – Failed ids and their error details **DO NOT EDIT MANUALLY!**
