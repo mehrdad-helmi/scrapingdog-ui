@@ -11,6 +11,7 @@ bun install
 ## Input
 
 - Put LinkedIn profile IDs (one per line) in **`input-ids.txt`**
+- Create a .env file based on `.env.example`
 
 ## Run **development**
 
