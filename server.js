@@ -167,11 +167,26 @@ async function ensureResultDir() {
   }
 }
 
+function extractLinkedInId(line) {
+  const value = line.trim();
+  
+  if (!value.includes('/')) {
+    return value;
+  }
+  
+  const match = value.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  
+  if (match) {
+    return match[1];
+  }
+  return null;
+}
+
 function parseIds(content) {
   return content
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+      .split(/\r?\n/)
+      .map((line) => extractLinkedInId(line))
+      .filter(Boolean);
 }
 
 async function readInputIds() {

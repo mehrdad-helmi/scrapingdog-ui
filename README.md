@@ -10,10 +10,11 @@ bun install
 
 ## Input
 
-- Put LinkedIn profile IDs (one per line) in **`input-ids.txt`**
+- Put LinkedIn profile IDs (or links) (one per line) in **`input-ids.txt`**
 - Create a .env file based on `.env.example`
 
 ## Run **development**
+ - Instead of the real ScrappingDog api, app will call its builtin mock server to test the whole process works fine
 
 ```bash
  bun start:dev
