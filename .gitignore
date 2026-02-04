@@ -9,6 +9,7 @@ batch1-failed-ids.txt
 remaining-ids.txt
 input-ids-*
 output
+mock-output
 
 # Env / secrets (if you move API key later)
 .env

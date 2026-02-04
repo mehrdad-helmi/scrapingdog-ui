@@ -11,15 +11,16 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const IS_DEV = NODE_ENV === 'development';
 const PORT = process.env.PORT || 3847;
 
 const API_KEY = process.env.API_KEY;
-if(NODE_ENV !== 'development')
+if(!IS_DEV)
   assert(API_KEY?.length===24,'API KEY NEEDED!');
 
-
 const FILE_APPENDIX = process.env.FILE_APPENDIX ? `-${process.env.FILE_APPENDIX}` : '';
-const SUBDIRECTORY = process.env.SUBDIRECTORY ? `output/${process.env.SUBDIRECTORY}` : 'output';
+const parentDir = IS_DEV ? 'mock-output' : 'output'
+const SUBDIRECTORY = process.env.SUBDIRECTORY ? `${parentDir}/${process.env.SUBDIRECTORY}` : parentDir;
 if(SUBDIRECTORY)
   await fs.mkdir(SUBDIRECTORY, {recursive:true}).catch(e=>console.error(e));
 
@@ -45,7 +46,7 @@ console.table({
                 'API_KEY':API_KEY,
               })
 
-const API_URL = NODE_ENV === 'development' 
+const API_URL = IS_DEV 
   ? 'http://localhost:3000/api/test'
   : 'https://api.scrapingdog.com/profile';
 
